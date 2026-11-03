@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html data-dw-theme="auto" lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DW Election Donut to GeoJSON Tool</title>
+  <link rel="icon" href="https://media.ffycdn.net/eu/dwbrand/ZXAewZw7EMFbwNFpQEHm.png?width={width}" type="image/png">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="assets/dw-base.css">
+  <link rel="stylesheet" href="assets/dw-interaction-button.css">
+  <link rel="stylesheet" href="assets/dw-input-text.css">
+  <link rel="stylesheet" href="assets/dw-input-choice-chips.css">
+  <link rel="stylesheet" href="assets/dw-input-dropdown.css">
+  <link rel="stylesheet" href="assets/dw-interaction-link.css">
+  <link rel="stylesheet" href="assets/dw-navigation-footer-slim.css">
+  <style>
+    /* Same shell as the waffle tool. The waffle-* class names are kept on purpose,
+       because dw-tool-shell.css targets them for the shared grid and breakpoints. */
+    [hidden] { display: none !important; }
+
+    .visually-hidden {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0 0 0 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+    }
+
+    .waffle-tool {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--waffle-shell-bg, var(--dw-page-surface, var(--backgrounds-bg-1, #fff)));
+    }
+
+    .dw-header-minimal,
+    .dw-header-minimal--light {
+      background: var(--colors-brand-dw-light-blue, #05b2fc);
+      color: var(--colors-brand-white, #fff);
+    }
+
+    .dw-header-minimal__inner {
+      width: 100%;
+      max-width: var(--dw-container-max, 1440px);
+      min-height: 4.75rem;
+      margin: 0 auto;
+      padding-inline: var(--dw-tool-main-inline-gutter, calc(100% * 2 / var(--dw-grid-columns, 30)));
+      display: flex;
+      align-items: center;
+      box-sizing: border-box;
+    }
+
+    .dw-header-minimal__brand {
+      display: inline-flex;
+      align-items: center;
+      color: var(--colors-brand-white, #fff);
+      text-decoration: none;
+      pointer-events: none;
+    }
+
+    .dw-header-minimal__logo {
+      display: block;
+      width: 4.25rem;
+      height: auto;
+      overflow: visible;
+    }
+
+    .dw-header-minimal__label { display: none; }
+
+    .waffle-main {
+      flex: 1 0 auto;
+      width: min(100%, var(--dw-layout-max-width));
+      max-width: var(--dw-layout-max-width);
+      margin: 0 auto;
+      padding-block: var(--dw-tool-main-padding-block-start, var(--dw-space-2, 2rem)) var(--dw-tool-main-padding-block-end, var(--dw-space-3, 3rem));
+      padding-inline: var(--dw-tool-main-inline-gutter, calc(100% * 2 / var(--dw-grid-columns, 30)));
+    }
+
+    .waffle-hero {
+      width: 100%;
+      max-width: none;
+      margin: 0 0 var(--dw-space-2, 2rem);
+      text-align: left;
+    }
+
+    .waffle-title {
+      width: 100%;
+      max-width: none;
+      margin: 0 0 var(--dw-space-0-5, 0.5rem);
+      color: var(--dw-color-dark-blue, var(--colors-brand-dw-dark-blue, #002186));
+      font-size: var(--dw-font-size-plus-4, 2.0736rem);
+      font-weight: var(--dw-font-weight-semibold, 600);
+      letter-spacing: normal;
+      line-height: 1.05;
+      font-variation-settings: "ital" 0, "opsz" 20;
+    }
+
+    .waffle-intro {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      color: var(--dw-text-primary, var(--fonts-prio-1, #000821));
+      font-size: var(--dw-font-size-plus-1, 1.2rem);
+      font-weight: var(--dw-font-weight-medium, 500);
+      line-height: var(--dw-line-height-copy, 1.4);
+      font-variation-settings: "ital" 0, "opsz" 10;
+    }
+
+    .waffle-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: 0;
+      row-gap: var(--dw-tool-grid-row-gap, var(--dw-space-3, 3rem));
+      align-items: start;
+    }
+
+    .waffle-form { display: grid; gap: 1.75rem; }
+    .waffle-field { min-width: 0; }
+
+    .waffle-choice-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+
+    .dw-fieldset__legend {
+      display: block;
+      margin: 0 0 0.625rem;
+      color: var(--font-colors-info-form-label-info, var(--dw-text-primary, #000821));
+      font-family: var(--dw-font-family-text, var(--dw-font-family));
+      font-size: var(--dw-font-size-base, 1rem);
+      font-weight: var(--dw-font-weight-medium, 500);
+      line-height: var(--dw-line-height-tight, 1.1);
+      font-variation-settings: "ital" 0, "opsz" 10;
+    }
+
+    .waffle-contact a:any-link {
+      color: var(--dw-color-blue-600, var(--colors-brand-dw-dark-blue, #002186));
+      font-weight: var(--dw-font-weight-semibold, 600);
+      text-decoration: none;
+    }
+
+    .waffle-contact a:hover,
+    .waffle-contact a:focus-visible {
+      text-decoration: underline;
+      text-underline-offset: 0.14em;
+    }
+
+    .waffle-grid-controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.5rem 5.25rem;
+    }
+
+    .waffle-status {
+      margin: 0;
+      color: var(--dw-text-color-muted);
+      font-size: 0.875rem;
+      line-height: 1.4;
+      min-height: 1.25rem;
+      font-variation-settings: "ital" 0, "opsz" 10;
+    }
+
+    .waffle-status[data-state="error"] {
+      color: var(--colors-accent-breaking);
+      font-weight: var(--dw-font-weight-bold);
+    }
+
+    .waffle-contact {
+      margin: 0;
+      color: var(--dw-text-color);
+      font-size: 1rem;
+      line-height: 1.45;
+      font-variation-settings: "ital" 0, "opsz" 10;
+    }
+
+    .waffle-output {
+      display: grid;
+      gap: 1rem;
+      align-content: start;
+      width: 100%;
+      min-width: 0;
+      justify-self: stretch;
+    }
+
+    .waffle-sample { width: 100%; min-width: 0; margin: 0; }
+
+    .waffle-output[data-mode="generated"] .waffle-sample,
+    .waffle-output[data-mode="sample"] .waffle-preview-wrap,
+    .waffle-output[data-mode="sample"] .waffle-download-action {
+      display: none;
+    }
+
+    .waffle-sample img {
+      display: block;
+      width: 100%;
+      background: var(--dw-surface-bg-alt);
+    }
+
+    .waffle-sample figcaption {
+      margin-top: 0.75rem;
+      color: var(--dw-text-color);
+      font-size: var(--dw-font-size-minus-1);
+      line-height: 1.35;
+      font-variation-settings: "ital" 0, "opsz" 10;
+    }
+
+    .waffle-preview-wrap { justify-self: stretch; }
+    .waffle-download-action { justify-self: end; }
+    .waffle-download-icon { width: 1rem; height: 1rem; }
+
+    /* ---- Donut-specific additions ---- */
+    .donut-controls { display: grid; gap: 1.75rem; }
+
+    .donut-help {
+      margin: 0 0 0.75rem;
+      max-width: 34rem;
+    }
+
+    .donut-file {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      color: var(--dw-text-color);
+      font-size: var(--dw-font-size-base, 1rem);
+      font-variation-settings: "ital" 0, "opsz" 10;
+    }
+
+    .donut-file__name {
+      font-weight: var(--dw-font-weight-semibold, 600);
+      word-break: break-word;
+    }
+
+    .donut-file__remove {
+      appearance: none;
+      background: none;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      font: inherit;
+      font-weight: var(--dw-font-weight-semibold, 600);
+    }
+
+    .donut-file__remove .dw-interaction-link__icon { width: 1.1em; height: 1.1em; }
+
+    .donut-preview {
+      width: min(100%, 40rem);
+      padding: 1.125rem;
+      background: var(--dw-surface-bg-alt);
+      box-sizing: border-box;
+    }
+
+    .donut-preview svg { width: 100%; height: auto; display: block; }
+
+    .donut-label {
+      font-family: var(--dw-font-family-text, var(--dw-font-family));
+      font-size: 13px;
+      font-weight: 700;
+      font-variation-settings: "ital" 0, "opsz" 10;
+      pointer-events: none;
+    }
+
+    .donut-label--value { font-weight: 400; }
+
+    @media (max-width: 959px) {
+      .waffle-layout { grid-template-columns: 1fr; gap: 2rem; }
+      .waffle-output { width: 100%; max-width: none; justify-self: stretch; }
+      .waffle-sample, .waffle-sample img, .waffle-preview-wrap, .donut-preview { width: 100%; max-width: none; }
+      .waffle-download-action { justify-self: end; }
+    }
+
+    @media (max-width: 767px) {
+      .waffle-main { padding: 1.875rem clamp(1.625rem, 6.5vw, 5.5rem) 3rem; }
+      .waffle-hero { margin-bottom: 2rem; }
+      .waffle-title { font-size: var(--dw-font-size-plus-4, 2.0736rem); line-height: 1.05; }
+      .waffle-intro { font-size: var(--dw-font-size-plus-1, 1.2rem); line-height: var(--dw-line-height-copy, 1.4); }
+      .waffle-grid-controls { grid-template-columns: 1fr; gap: 1.5rem; }
+      .waffle-choice-chip-list { gap: 0.75rem; }
+      .donut-preview { padding: 0.75rem; }
+    }
+
+    @media (max-width: 599px) {
+      .waffle-download-action { justify-self: stretch; }
+      .waffle-download-action .dw-interaction-button { width: 100%; inline-size: 100%; max-inline-size: none; }
+      #uploadButton { width: 100%; inline-size: 100%; max-inline-size: none; }
+    }
+
+    /* Dark mode, same passes as the waffle tool */
+    :root[data-dw-theme="dark"] .waffle-tool,
+    html.dark .waffle-tool,
+    body.dark .waffle-tool {
+      --waffle-shell-bg: var(--backgrounds-bg-2, var(--colors-bluegrays-dark-blue-grey-01, #081336));
+      background: var(--waffle-shell-bg) !important;
+    }
+
+    :root[data-dw-theme="dark"] .waffle-title,
+    html.dark .waffle-title,
+    body.dark .waffle-title,
+    :root[data-dw-theme="dark"] .waffle-intro,
+    html.dark .waffle-intro,
+    body.dark .waffle-intro {
+      color: var(--colors-brand-white, #ffffff) !important;
+      -webkit-text-fill-color: currentColor;
+    }
+
+    :root[data-dw-theme="dark"] .waffle-contact .dw-interaction-link:any-link,
+    :root[data-dw-theme="dark"] .waffle-contact .dw-interaction-link:visited,
+    :root[data-dw-theme="dark"] .waffle-contact .dw-interaction-link:hover,
+    :root[data-dw-theme="dark"] .waffle-contact .dw-interaction-link:focus-visible,
+    :root[data-dw-theme="dark"] .waffle-contact .dw-interaction-link:active,
+    html.dark .waffle-contact .dw-interaction-link:any-link,
+    html.dark .waffle-contact .dw-interaction-link:visited,
+    html.dark .waffle-contact .dw-interaction-link:hover,
+    html.dark .waffle-contact .dw-interaction-link:focus-visible,
+    html.dark .waffle-contact .dw-interaction-link:active,
+    body.dark .waffle-contact .dw-interaction-link:any-link,
+    body.dark .waffle-contact .dw-interaction-link:visited,
+    body.dark .waffle-contact .dw-interaction-link:hover,
+    body.dark .waffle-contact .dw-interaction-link:focus-visible,
+    body.dark .waffle-contact .dw-interaction-link:active {
+      --dw-interaction-link-color: var(--colors-brand-white, #ffffff);
+      --dw-interaction-link-color-hover: var(--colors-brand-white, #ffffff);
+      --dw-interaction-link-color-focus: var(--colors-brand-white, #ffffff);
+      --dw-interaction-link-color-active: var(--colors-brand-white, #ffffff);
+      --dw-interaction-link-color-visited: var(--colors-brand-white, #ffffff);
+      --dw-interaction-link-state-color: var(--colors-brand-white, #ffffff);
+      color: var(--colors-brand-white, #ffffff) !important;
+      -webkit-text-fill-color: currentColor;
+      text-decoration-color: currentColor;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-dw-theme="light"]) .waffle-tool {
+        --waffle-shell-bg: var(--backgrounds-bg-2, var(--colors-bluegrays-dark-blue-grey-01, #081336));
+        background: var(--waffle-shell-bg) !important;
+      }
+
+      :root:not([data-dw-theme="light"]) .waffle-title,
+      :root:not([data-dw-theme="light"]) .waffle-intro {
+        color: var(--colors-brand-white, #ffffff) !important;
+        -webkit-text-fill-color: currentColor;
+      }
+
+      :root:not([data-dw-theme="light"]) .waffle-contact .dw-interaction-link:any-link,
+      :root:not([data-dw-theme="light"]) .waffle-contact .dw-interaction-link:visited,
+      :root:not([data-dw-theme="light"]) .waffle-contact .dw-interaction-link:hover,
+      :root:not([data-dw-theme="light"]) .waffle-contact .dw-interaction-link:focus-visible,
+      :root:not([data-dw-theme="light"]) .waffle-contact .dw-interaction-link:active {
+        --dw-interaction-link-color: var(--colors-brand-white, #ffffff);
+        --dw-interaction-link-color-hover: var(--colors-brand-white, #ffffff);
+        --dw-interaction-link-color-focus: var(--colors-brand-white, #ffffff);
+        --dw-interaction-link-color-active: var(--colors-brand-white, #ffffff);
+        --dw-interaction-link-color-visited: var(--colors-brand-white, #ffffff);
+        --dw-interaction-link-state-color: var(--colors-brand-white, #ffffff);
+        color: var(--colors-brand-white, #ffffff) !important;
+        -webkit-text-fill-color: currentColor;
+        text-decoration-color: currentColor;
+      }
+    }
+
+    .waffle-intro {
+      font-family: var(--dw-font-family-text, var(--dw-font-family)) !important;
+      font-size: var(--dw-font-size-plus-1, 1.2rem) !important;
+      font-weight: var(--dw-font-weight-medium, 500) !important;
+      line-height: var(--dw-line-height-copy, 1.4) !important;
+      font-variation-settings: "ital" 0, "opsz" 10 !important;
+    }
+  </style>
+  <link rel="stylesheet" href="assets/dw-tool-shell.css">
+</head>
+<body>
+  <div class="waffle-tool dw-tool-shell">
+    <header aria-label="Deutsche Welle" class="dw-header-minimal dw-header-minimal--light">
+      <div class="dw-header-minimal__inner">
+        <div class="dw-header-minimal__brand" aria-hidden="true">
+          <svg aria-hidden="true" class="dw-header-minimal__logo" viewBox="-1 -1 105.32 61.04" focusable="false">
+            <path d="M73.8,0A29.42,29.42,0,0,0,51.66,10a29.52,29.52,0,1,0,0,39A29.52,29.52,0,1,0,73.8,0m-26,43.51a23,23,0,1,1,4.75-14,23,23,0,0,1-4.75,14M86,40.06H79.73L75.64,29.65l-.11-.29-4.12,10.7h-6.2L58.76,19h7l3,10.62.1.36L73,19h5.14l4,10.63.13.35,0-.18L85.36,19h7ZM30.59,17.71h-13V41.33h13C37.2,41.33,44,37.45,44,29.52S37.2,17.71,30.59,17.71M30.1,34.19h-5V24.85h5c4.25,0,5.77,2.2,5.77,4.67s-1.51,4.67-5.77,4.67" fill="currentColor"></path>
+          </svg>
+          <span class="dw-header-minimal__label"></span>
+        </div>
+      </div>
+    </header>
+
+    <main class="waffle-main dw-tool-shell__main">
+      <section class="waffle-hero dw-tool-hero" aria-labelledby="donut-title">
+        <h1 id="donut-title" class="waffle-title dw-tool-title">DW Election Donut to GeoJSON Tool</h1>
+        <p class="waffle-intro dw-tool-intro">Build Election Donuts that can be uploaded to Datawrapper as custom choropleth maps.</p>
+      </section>
+
+      <section class="waffle-layout dw-tool-grid" aria-label="Election donut generator">
+        <form class="waffle-form dw-tool-grid__left" id="donut-form" novalidate>
+
+          <!-- Upload -->
+          <div class="waffle-field">
+            <span class="dw-fieldset__legend" id="upload-label">Data file</span>
+            <p class="dw-text-help donut-help" id="upload-help">Upload a CSV or Excel file with at least one text column (party names) and one numeric column (seats). After loading the data, you can pick the columns and the order of the segments.</p>
+            <button class="dw-interaction-button dw-interaction-button--primary" id="uploadButton" type="button" aria-describedby="upload-help">
+              <span class="dw-interaction-button__label">Select file</span>
+            </button>
+            <input id="fileInput" type="file" accept=".csv,.xlsx,.xls" hidden>
+            <div class="donut-file" id="selectedFile" hidden>
+              <span>Selected file:</span>
+              <span class="donut-file__name" id="fileName"></span>
+              <button class="dw-interaction-link donut-file__remove" id="removeFile" type="button">
+                <span class="dw-interaction-link__label">Remove file</span>
+                <svg class="dw-interaction-link__icon" viewBox="0 0 30 30" aria-hidden="true" focusable="false">
+                  <path d="M24.75 6.9H19.575C19.215 4.695 17.31 3 15 3C12.69 3 10.785 4.695 10.425 6.9H5.25V8.7H6.915L8.25 23.4C8.25 24.9 9.75 26.4 11.25 26.4H18.75C20.25 26.4 21.75 24.9 21.75 23.4L23.085 8.7H24.75V6.9ZM15 4.8C16.305 4.8 17.4 5.7 17.745 6.9H12.27C12.6 5.7 13.695 4.8 15.015 4.8H15ZM19.95 23.4C19.95 23.91 19.26 24.6 18.75 24.6H11.25C10.74 24.6 10.05 23.91 10.05 23.4L8.715 8.7H21.27L19.935 23.4H19.95Z"/>
+                  <path d="M13.8901 12.9H12.0901V20.4H13.8901V12.9Z"/>
+                  <path d="M17.9101 12.9H16.1101V20.4H17.9101V12.9Z"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Controls (shown after upload) -->
+          <div class="donut-controls" id="donutControls" hidden>
+            <div class="waffle-grid-controls">
+              <div class="waffle-field dw-input-dropdown">
+                <label class="dw-input-dropdown__label" for="partyCol">Party names</label>
+                <div class="dw-input-dropdown__field">
+                  <select class="dw-input-dropdown__control" id="partyCol" name="party"></select>
+                  <span class="dw-input-dropdown__icon" aria-hidden="true"></span>
+                </div>
+              </div>
+              <div class="waffle-field dw-input-dropdown">
+                <label class="dw-input-dropdown__label" for="seatsCol">Seats</label>
+                <div class="dw-input-dropdown__field">
+                  <select class="dw-input-dropdown__control" id="seatsCol" name="seats"></select>
+                  <span class="dw-input-dropdown__icon" aria-hidden="true"></span>
+                </div>
+              </div>
+            </div>
+
+            <fieldset class="waffle-choice-fieldset" aria-labelledby="segment-order-label">
+              <legend class="dw-fieldset__legend" id="segment-order-label">Segment order</legend>
+              <div class="dw-input-choice-chips waffle-choice-chip-list" role="radiogroup" aria-label="Segment order">
+                <button class="dw-input-choice-chips__chip" type="button" role="radio" aria-checked="false" tabindex="-1" data-control="order" data-value="desc">
+                  <span class="dw-input-choice-chips__label">Large to small</span>
+                </button>
+                <button class="dw-input-choice-chips__chip" type="button" role="radio" aria-checked="false" tabindex="-1" data-control="order" data-value="asc">
+                  <span class="dw-input-choice-chips__label">Small to large</span>
+                </button>
+                <button class="dw-input-choice-chips__chip is-active" type="button" role="radio" aria-checked="true" tabindex="0" data-control="order" data-value="data">
+                  <span class="dw-input-choice-chips__label">Keep order in data</span>
+                </button>
+              </div>
+            </fieldset>
+          </div>
+
+          <p class="waffle-status" id="donut-status" role="status" aria-live="polite"></p>
+        </form>
+
+        <aside class="waffle-output dw-tool-grid__right" id="donut-output" data-mode="sample" aria-label="Output preview">
+          <figure class="waffle-sample">
+            <img src="assets/sample-donut.png" alt="Example image: Election donut showing European Parliament seats by political group, generated using this tool and styled in Datawrapper">
+            <figcaption>Example image: Election donut generated using this tool and styled in Datawrapper</figcaption>
+          </figure>
+
+          <div class="waffle-preview-wrap" id="donut-preview-wrap" aria-live="polite">
+            <h2 class="visually-hidden">Generated election donut preview</h2>
+            <div class="donut-preview" id="donut-preview"></div>
+          </div>
+
+          <div class="waffle-download-action dw-tool-actions">
+            <a class="dw-interaction-button dw-interaction-button--primary" id="download-link" href="#" download="election-donut.geojson">
+              <span class="dw-interaction-button__label">Download GeoJSON</span>
+              <span class="dw-interaction-button__icon dw-interaction-button__icon--end" aria-hidden="true">
+                <svg class="waffle-download-icon dw-icon" viewBox="0 0 24 24" focusable="false">
+                  <path d="M11 3h2v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6V3Zm-6 16h14v2H5v-2Z" fill="currentColor"/>
+                </svg>
+              </span>
+            </a>
+          </div>
+        </aside>
+
+        <p class="waffle-contact dw-tool-grid__full">If you have any further questions or feedback about the tool, contact us at <a class="dw-interaction-link" href="mailto:data-team@dw.com">data-team@dw.com</a>.</p>
+      </section>
+    </main>
+
+    <footer class="dw-navigation-footer-slim">
+      <nav class="dw-navigation-footer-slim__nav" aria-label="Footer navigation">
+        <ul class="dw-navigation-footer-slim__list">
+          <li class="dw-navigation-footer-slim__item dw-navigation-footer-slim__item--meta"><span class="dw-navigation-footer-slim__meta-copy">&copy;&nbsp;<span data-footer-year="">2026</span>&nbsp;Deutsche Welle</span></li>
+          <li class="dw-navigation-footer-slim__item"><a class="dw-navigation-footer-slim__link" href="#datenschutz">Datenschutz</a></li>
+          <li class="dw-navigation-footer-slim__item"><a class="dw-navigation-footer-slim__link" href="#impressum">Impressum</a></li>
+          <li class="dw-navigation-footer-slim__item"><a class="dw-navigation-footer-slim__link" href="#erklaerung-zur-barrierefreiheit">Erklärung zur Barrierefreiheit</a></li>
+          <li class="dw-navigation-footer-slim__item"><a class="dw-navigation-footer-slim__link" href="#datenschutzeinstellungen">Datenschutzeinstellungen</a></li>
+        </ul>
+      </nav>
+    </footer>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    /* ---------------------------------------------------------------
+       Settings
+       --------------------------------------------------------------- */
+    const ARC_SPAN_DEG   = 216;     // 60% of the circle -> 144° opening at the bottom
+    const INNER_RATIO    = 0.3;     // inner radius / outer radius
+    const PAD_ANGLE      = 0.01;    // radians, gap between neighbouring segments
+    const MAX_STEP_DEG   = 1.5;     // max. arc per vertex (1–2° is fine)
+    const BOX            = 5;       // GeoJSON coordinates fill -5…5 (same box as the treemap tool)
+    const PREVIEW_PX     = 60;      // preview pixels per GeoJSON unit
+    const PREVIEW_MARGIN = 12;
+    const MIN_LABEL_PX   = 36;      // minimum arc length at mid radius to show a label
+    const PALETTE = ['#002186', '#05b2fc', '#fae000', '#63de9d', '#ef6c6c',
+                     '#5c718a', '#99b5c9', '#081336', '#cfccca'];
+
+    const R1 = 1;
+    const R0 = INNER_RATIO;
+    const DEG = Math.PI / 180;
+    const START = -(ARC_SPAN_DEG / 2) * DEG;
+    const END   =  (ARC_SPAN_DEG / 2) * DEG;
+    const STEP  = MAX_STEP_DEG * DEG;
+
+    /* ---------------------------------------------------------------
+       Elements & state
+       --------------------------------------------------------------- */
+    const $ = (id) => document.getElementById(id);
+    const form         = $('donut-form');
+    const fileInput    = $('fileInput');
+    const uploadButton = $('uploadButton');
+    const selectedFile = $('selectedFile');
+    const fileNameEl   = $('fileName');
+    const removeFile   = $('removeFile');
+    const controls     = $('donutControls');
+    const partySel     = $('partyCol');
+    const seatsSel     = $('seatsCol');
+    const statusEl     = $('donut-status');
+    const outputEl     = $('donut-output');
+    const previewEl    = $('donut-preview');
+    const downloadLink = $('download-link');
+
+    document.querySelectorAll('[data-footer-year]').forEach((el) => {
+      el.textContent = String(new Date().getFullYear());
+    });
+
+    const state = { order: 'data', downloadUrl: null };
+    let rawRows = null;
+
+    /* ---------------------------------------------------------------
+       Geometry helpers (y points up, angle 0 = 12 o'clock, clockwise)
+       --------------------------------------------------------------- */
+    const pointAt = (theta, r) => [r * Math.sin(theta), r * Math.cos(theta)];
+
+    function arcPoints(a0, a1, r) {
+      const n = Math.max(1, Math.ceil(Math.abs(a1 - a0) / STEP));
+      const pts = [];
+      for (let i = 0; i <= n; i++) pts.push(pointAt(a0 + (a1 - a0) * i / n, r));
+      return pts;
+    }
+
+    // Fixed transform derived from the empty donut outline, so coordinates are
+    // identical for every dataset. Uniform scale keeps the circle round.
+    const T = (() => {
+      const outline = arcPoints(START, END, R1).concat(arcPoints(START, END, R0));
+      const xs = outline.map(p => p[0]);
+      const ys = outline.map(p => p[1]);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      return {
+        s: (2 * BOX) / Math.max(maxX - minX, maxY - minY),
+        cx: (minX + maxX) / 2,
+        cy: (minY + maxY) / 2,
+        outline
+      };
+    })();
+
+    const round6 = (v) => Math.round(v * 1e6) / 1e6;
+    const toGeo = ([x, y]) => [round6((x - T.cx) * T.s), round6((y - T.cy) * T.s)];
+
+    const outlineGeo = T.outline.map(toGeo);
+    const EXT = {
+      minX: Math.min(...outlineGeo.map(p => p[0])),
+      maxX: Math.max(...outlineGeo.map(p => p[0])),
+      minY: Math.min(...outlineGeo.map(p => p[1])),
+      maxY: Math.max(...outlineGeo.map(p => p[1]))
+    };
+
+    /* ---------------------------------------------------------------
+       Segments: d3.pie() angles + parallel-sided gaps -> polygons
+       --------------------------------------------------------------- */
+    function buildSegments(rows) {
+      const pie = d3.pie()
+        .sort(null)                                   // order is decided beforehand
+        .value(d => d.seats)
+        .startAngle(START)
+        .endAngle(END)
+        .padAngle(rows.length > 1 ? PAD_ANGLE : 0);
+
+      const arcs = pie(rows);
+      const pad = arcs.length ? arcs[0].padAngle : 0;
+      // Same linear gap that d3.arc() would use (pad angle × pad radius)
+      const halfGap = pad * Math.sqrt(R0 * R0 + R1 * R1) / 2;
+      const offset = (r) => Math.asin(Math.min(1, halfGap / r));
+
+      return arcs.map(a => {
+        const mid = (a.startAngle + a.endAngle) / 2;
+        let so = a.startAngle + offset(R1), eo = a.endAngle - offset(R1);
+        let si = a.startAngle + offset(R0), ei = a.endAngle - offset(R0);
+        if (so > eo) so = eo = mid;
+        if (si > ei) si = ei = mid;                   // very thin segment: closes to a point at the inner edge
+
+        const raw = arcPoints(so, eo, R1).concat(arcPoints(si, ei, R0).reverse());
+        const ring = raw.filter((p, i, arr) => i === 0 || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]);
+        ring.push(ring[0]);                           // close the ring
+
+        return {
+          datum: a.data,
+          a0: a.startAngle,
+          a1: a.endAngle,
+          mid,
+          ring: ring.map(toGeo)
+        };
+      });
+    }
+
+    function buildGeoJSON(segs) {
+      return {
+        type: 'FeatureCollection',
+        features: segs.map(s => ({
+          type: 'Feature',
+          properties: { id: s.datum.id, seats: s.datum.seats },
+          geometry: { type: 'Polygon', coordinates: [s.ring] }
+        }))
+      };
+    }
+
+    /* ---------------------------------------------------------------
+       Preview
+       --------------------------------------------------------------- */
+    function textColor(hex) {
+      const c = d3.color(hex);
+      const lum = (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255;
+      return lum > 0.62 ? '#000821' : '#ffffff';
+    }
+
+    function renderPreview(segs) {
+      const host = d3.select(previewEl);
+      host.html('');
+
+      const vbX = EXT.minX * PREVIEW_PX - PREVIEW_MARGIN;
+      const vbY = -EXT.maxY * PREVIEW_PX - PREVIEW_MARGIN;
+      const vbW = (EXT.maxX - EXT.minX) * PREVIEW_PX + 2 * PREVIEW_MARGIN;
+      const vbH = (EXT.maxY - EXT.minY) * PREVIEW_PX + 2 * PREVIEW_MARGIN;
+
+      const svg = host.append('svg')
+        .attr('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`)
+        .attr('preserveAspectRatio', 'xMidYMid meet')
+        .attr('role', 'img')
+        .attr('aria-label', 'Preview of the election donut');
+
+      const pathD = (ring) => 'M' + ring.map(([x, y]) =>
+        `${(x * PREVIEW_PX).toFixed(2)},${(-y * PREVIEW_PX).toFixed(2)}`).join('L') + 'Z';
+
+      let hiddenLabels = 0;
+      const rm = (R0 + R1) / 2;
+
+      segs.forEach((s, i) => {
+        const fill = PALETTE[i % PALETTE.length];
+
+        svg.append('path')
+          .attr('d', pathD(s.ring))
+          .attr('fill', fill)
+          .append('title')
+          .text(`${s.datum.id}: ${s.datum.seats}`);
+
+        const arcLenPx = (s.a1 - s.a0) * rm * T.s * PREVIEW_PX;
+        if (arcLenPx < MIN_LABEL_PX) { hiddenLabels++; return; }
+
+        const [gx, gy] = toGeo(pointAt(s.mid, rm));
+        const x = gx * PREVIEW_PX;
+        const y = -gy * PREVIEW_PX;
+        const maxChars = Math.floor(Math.max(arcLenPx, 64) / 7);
+        const name = s.datum.id.length > maxChars
+          ? s.datum.id.slice(0, Math.max(1, maxChars - 1)) + '…'
+          : s.datum.id;
+        const color = textColor(fill);
+
+        svg.append('text').attr('class', 'donut-label')
+          .attr('x', x).attr('y', y - 8)
+          .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+          .style('fill', color)
+          .text(name);
+
+        svg.append('text').attr('class', 'donut-label donut-label--value')
+          .attr('x', x).attr('y', y + 8)
+          .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+          .style('fill', color)
+          .text(s.datum.seats);
+      });
+
+      return hiddenLabels;
+    }
+
+    /* ---------------------------------------------------------------
+       Data handling
+       --------------------------------------------------------------- */
+    function parseNumber(v) {
+      if (typeof v === 'number') return v;
+      if (v === null || v === undefined) return NaN;
+      let s = String(v).trim().replace(/\s/g, '');
+      if (s === '') return NaN;
+      if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, '');   // 1,234
+      else if (/^-?\d+,\d+$/.test(s)) s = s.replace(',', '.');                // 12,5
+      return Number(s);
+    }
+
+    function analyseColumns(rows, keys) {
+      return keys.map(key => {
+        let filled = 0, numeric = 0;
+        rows.forEach(r => {
+          const v = r[key];
+          if (v === '' || v === null || v === undefined) return;
+          filled++;
+          if (Number.isFinite(parseNumber(v))) numeric++;
+        });
+        return { key, filled, ratio: filled ? numeric / filled : 0 };
+      });
+    }
+
+    function processRows(partyKey, seatsKey) {
+      const used = new Set();
+      const rows = [];
+      let dropped = 0, renamed = 0;
+
+      rawRows.forEach(r => {
+        const name = String(r[partyKey] ?? '').trim();
+        const rawSeats = r[seatsKey];
+        const seats = parseNumber(rawSeats);
+        const seatsBlank = rawSeats === '' || rawSeats === null || rawSeats === undefined;
+
+        if (!name && seatsBlank) return;                       // completely empty row: ignore silently
+        if (!name || !Number.isFinite(seats) || seats <= 0) { dropped++; return; }
+
+        let id = name;
+        if (used.has(id)) {
+          let k = 2;
+          while (used.has(`${name}_${k}`)) k++;
+          id = `${name}_${k}`;
+          renamed++;
+        }
+        used.add(id);
+        rows.push({ id, seats });
+      });
+
+      return { rows, dropped, renamed };
+    }
+
+    function orderRows(rows, mode) {
+      const copy = rows.slice();                               // Array.sort is stable: ties keep data order
+      if (mode === 'desc') copy.sort((a, b) => b.seats - a.seats);
+      if (mode === 'asc')  copy.sort((a, b) => a.seats - b.seats);
+      return copy;
+    }
+
+    /* ---------------------------------------------------------------
+       UI state
+       --------------------------------------------------------------- */
+    function setStatus(message, statusState = '') {
+      statusEl.textContent = message;
+      if (statusState) statusEl.dataset.state = statusState;
+      else delete statusEl.dataset.state;
+    }
+
+    function revokeDownloadUrl() {
+      if (state.downloadUrl) {
+        URL.revokeObjectURL(state.downloadUrl);
+        state.downloadUrl = null;
+      }
+    }
+
+    function clearOutput() {
+      revokeDownloadUrl();
+      outputEl.dataset.mode = 'sample';
+      previewEl.innerHTML = '';
+      downloadLink.removeAttribute('href');
+    }
+
+    function resetToStart() {
+      fileInput.value = '';
+      rawRows = null;
+      clearOutput();
+      setStatus('');
+      selectedFile.hidden = true;
+      uploadButton.hidden = false;
+      controls.hidden = true;
+    }
+
+    function loadFailed(msg) {
+      resetToStart();
+      setStatus(msg, 'error');
+    }
+
+    function update() {
+      if (!rawRows) return;
+
+      const partyKey = partySel.value;
+      const seatsKey = seatsSel.value;
+
+      if (partyKey === seatsKey) {
+        clearOutput();
+        setStatus('Please choose two different columns for the party names and the number of seats.', 'error');
+        return;
+      }
+
+      const { rows, dropped, renamed } = processRows(partyKey, seatsKey);
+      if (!rows.length) {
+        clearOutput();
+        setStatus('No valid rows found. The seats column must contain positive numbers and the party column must contain names.', 'error');
+        return;
+      }
+
+      const segs = buildSegments(orderRows(rows, state.order));
+      const geojson = buildGeoJSON(segs);
+      const hiddenLabels = renderPreview(segs);
+
+      const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/geo+json' });
+      revokeDownloadUrl();
+      state.downloadUrl = URL.createObjectURL(blob);
+      downloadLink.href = state.downloadUrl;
+      downloadLink.download = 'election-donut.geojson';
+      outputEl.dataset.mode = 'generated';
+
+      const total = rows.reduce((sum, r) => sum + r.seats, 0);
+      const parts = [`${rows.length} segments, ${total.toLocaleString('en')} seats in total.`];
+      if (dropped) parts.push(`${dropped} row${dropped > 1 ? 's were' : ' was'} ignored (empty name or seats not a positive number).`);
+      if (renamed) parts.push(`${renamed} duplicate name${renamed > 1 ? 's were' : ' was'} made unique (e.g. “Name_2”).`);
+      if (hiddenLabels) parts.push('Labels are only shown on larger segments; all segments are included in the GeoJSON.');
+      setStatus(parts.join(' '));
+    }
+
+    function fillSelect(sel, keys, value) {
+      sel.innerHTML = '';
+      keys.forEach(k => {
+        const opt = document.createElement('option');
+        opt.value = k;
+        opt.textContent = k;
+        sel.appendChild(opt);
+      });
+      sel.value = value;
+    }
+
+    /* ---------------------------------------------------------------
+       File loading
+       --------------------------------------------------------------- */
+    function handleFile(file) {
+      const isCsv = /\.csv$/i.test(file.name);
+      const reader = new FileReader();
+
+      reader.onerror = () => loadFailed('The file could not be read. Please try another file.');
+      reader.onload = (ev) => {
+        try {
+          const wb = isCsv
+            ? XLSX.read(ev.target.result, { type: 'string' })
+            : XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+          if (!json.length) return loadFailed('The file contains no data rows.');
+          const keys = Object.keys(json[0]);
+          if (keys.length < 2) return loadFailed('The file needs at least two columns: one text column and one numeric column.');
+
+          const stats = analyseColumns(json, keys);
+          const numeric = stats.filter(s => s.filled > 0 && s.ratio >= 0.9);
+          if (!numeric.length) return loadFailed('No numeric column found. The file needs at least one column with numbers (seats).');
+
+          const text = stats.filter(s => s.filled > 0 && s.ratio < 0.5);
+          const party = (text[0] || stats.find(s => s.key !== numeric[0].key) || stats[0]).key;
+          const seatCandidates = numeric.filter(s => s.key !== party);
+          const seats = (
+            seatCandidates.find(s => /seat|mandat|sitz|size|value|count|number|total/i.test(s.key)) ||
+            seatCandidates[0] || numeric[0]
+          ).key;
+
+          rawRows = json;
+          fillSelect(partySel, keys, party);
+          fillSelect(seatsSel, keys, seats);
+
+          fileNameEl.textContent = file.name;
+          selectedFile.hidden = false;
+          uploadButton.hidden = true;
+          controls.hidden = false;
+
+          update();
+        } catch (err) {
+          console.error(err);
+          loadFailed('The file could not be parsed. Please upload a valid CSV or Excel file.');
+        }
+      };
+
+      if (isCsv) reader.readAsText(file, 'UTF-8');
+      else reader.readAsArrayBuffer(file);
+    }
+
+    /* ---------------------------------------------------------------
+       Choice chips (same pattern as the waffle tool)
+       --------------------------------------------------------------- */
+    function setChoice(control, value, { focus = false } = {}) {
+      if (control === 'order') state.order = value;
+
+      document.querySelectorAll(`.dw-input-choice-chips__chip[data-control="${control}"]`).forEach((chip) => {
+        const isSelected = chip.dataset.value === value;
+        chip.classList.toggle('is-active', isSelected);
+        chip.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+        chip.tabIndex = isSelected ? 0 : -1;
+        if (focus && isSelected) chip.focus();
+      });
+
+      update();
+    }
+
+    function handleChoiceClick(event) {
+      const chipEl = event.target.closest('.dw-input-choice-chips__chip[data-control][data-value]');
+      if (!chipEl || chipEl.getAttribute('aria-disabled') === 'true') return;
+      setChoice(chipEl.dataset.control, chipEl.dataset.value);
+    }
+
+    function handleChoiceKeydown(event) {
+      const chipEl = event.target.closest('.dw-input-choice-chips__chip[data-control][data-value]');
+      if (!chipEl) return;
+
+      const isArrow = ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(event.key);
+      if (!isArrow) return;
+
+      const chips = Array.from(document.querySelectorAll(`.dw-input-choice-chips__chip[data-control="${chipEl.dataset.control}"]`));
+      const currentIndex = chips.indexOf(chipEl);
+      if (currentIndex < 0) return;
+
+      event.preventDefault();
+      const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
+      const next = chips[(currentIndex + direction + chips.length) % chips.length];
+      setChoice(next.dataset.control, next.dataset.value, { focus: true });
+    }
+
+    /* ---------------------------------------------------------------
+       Events
+       --------------------------------------------------------------- */
+    form.addEventListener('submit', (e) => e.preventDefault());
+    uploadButton.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) handleFile(file);
+    });
+    removeFile.addEventListener('click', resetToStart);
+
+    partySel.addEventListener('change', update);
+    seatsSel.addEventListener('change', update);
+
+    document.addEventListener('click', handleChoiceClick);
+    document.addEventListener('keydown', handleChoiceKeydown);
+    window.addEventListener('beforeunload', revokeDownloadUrl);
+  })();
+  </script>
+</body>
+</html>
